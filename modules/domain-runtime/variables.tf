@@ -13,8 +13,13 @@ variable "environment" {
   type        = string
 }
 
+variable "tenant_id" {
+  description = "Tenant do Entra ID (administradores do Postgres)."
+  type        = string
+}
+
 variable "resource_group_name" {
-  description = "Resource group da plataforma (identidades do domínio são criadas nele)."
+  description = "Resource group da plataforma."
   type        = string
 }
 
@@ -24,32 +29,22 @@ variable "location" {
 }
 
 variable "eventhub_namespace_id" {
-  description = "ID do namespace Event Hubs da plataforma."
+  description = "ID do namespace Event Hubs."
   type        = string
 }
 
 variable "eventhub_namespace_name" {
-  description = "Nome do namespace Event Hubs da plataforma."
+  description = "Nome do namespace Event Hubs."
   type        = string
 }
 
 variable "storage_account_id" {
-  description = "ID do ADLS Gen2 da plataforma."
+  description = "ID do ADLS Gen2 (destino do Capture)."
   type        = string
 }
 
-variable "storage_account_name" {
-  description = "Nome do ADLS Gen2 da plataforma."
-  type        = string
-}
-
-variable "lakehouse_container_name" {
-  description = "Container do managed storage dos catálogos."
-  type        = string
-}
-
-variable "storage_credential_name" {
-  description = "Storage credential do UC (stack lakehouse)."
+variable "capture_container_name" {
+  description = "Container persistente de capture do domínio (stack lakehouse)."
   type        = string
 }
 
@@ -58,8 +53,13 @@ variable "aks_oidc_issuer_url" {
   type        = string
 }
 
-variable "deployer_application_id" {
-  description = "Application ID do SP deployer; recebe ALL_PRIVILEGES no catálogo do domínio."
+variable "postgres_server_id" {
+  description = "ID do Postgres Flexible Server compartilhado."
+  type        = string
+}
+
+variable "postgres_server_name" {
+  description = "Nome do Postgres Flexible Server compartilhado."
   type        = string
 }
 
@@ -80,10 +80,10 @@ variable "workloads" {
   default     = []
 }
 
-variable "catalog_grants" {
-  description = "Grants extras no catálogo: principal -> privilégios (ex.: grupo de analistas)."
-  type        = map(list(string))
-  default     = {}
+variable "database" {
+  description = "Cria o database <dominio> no Postgres compartilhado."
+  type        = bool
+  default     = false
 }
 
 variable "capture_interval_seconds" {
@@ -93,7 +93,7 @@ variable "capture_interval_seconds" {
 }
 
 variable "tags" {
-  description = "Tags base da plataforma."
+  description = "Tags (já com domain=<nome>)."
   type        = map(string)
   default     = {}
 }

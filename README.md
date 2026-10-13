@@ -2,105 +2,106 @@
 
 Infraestrutura como código (Terraform) da plataforma de dados event-driven. O repositório contém:
 - a **landing zone** Azure;
-- os objetos compartilhados do **Unity Catalog**;
-- o **onboarding de domínios** (event hubs, identidades, catálogos);
-- a **configuração GitOps** do AKS (Flux).
+- o **Unity Catalog**;
+- o **onboarding de domínios**;
+- o **runtime efêmero** (Event Hubs, AKS + Flux, Postgres).
 
-## Estrutura
+## Arquitetura do repositório
 
 ```
-bootstrap/          # 1x, local: storage do tfstate + identidades OIDC do GitHub (infra, deployer)
-modules/domain/     # módulo de onboarding de domínio (ADR-0004)
+bootstrap/                 # 1x, local: storage do tfstate + Managed Identities OIDC (ADR-0009)
+config/domains/<env>.yaml  # FONTE ÚNICA dos domínios on-boarded
+modules/
+  domain-data/             # parte persistente do domínio: container de capture, external location, catálogo UC
+  domain-runtime/          # parte efêmera: event hubs + Capture, identidades, RBAC, database no Postgres
 stacks/
-  core/             # RG, ADLS Gen2, Event Hubs, ACR, AKS (+ extensão Flux), Databricks, Access Connector
-  lakehouse/        # UC: storage credential, external location "lakehouse", SP deployer no workspace
-  domains/          # module.domain por domínio + azurerm_kubernetes_flux_configuration
-scripts/
-  configure-github.sh   # grava Variables/Environments nos repositórios (OIDC)
+  foundation/              # PERSISTENTE: RG, ADLS Gen2, ACR, Databricks + Access Connector
+  lakehouse/               # PERSISTENTE: storage credential, external locations, SP deployer, module.domain_data
+  runtime/                 # EFÊMERO: Event Hubs, AKS + Flux, Postgres Flexible, module.domain_runtime, flux configuration
+scripts/configure-github.sh
 ```
 
-Ordem de aplicação: `core` → `lakehouse` → `domains`. Cada stack lê os anteriores via `terraform_remote_state`.
+Ordem: `foundation` → `lakehouse` → `runtime`. Cada stack lê os anteriores via `terraform_remote_state`.
 
-## O que cada domínio recebe (`modules/domain`)
+## Persistente × efêmero (ADR-0010)
 
-| Recurso | Nome (ex.: `pedidos`, dev) |
+| Camada | O que tem | Quando aplica | Custo ocioso |
+|---|---|---|---|
+| `foundation` + `lakehouse` | Dados (ADLS, UC), imagens (ACR), workspace Databricks | Merge na `main` | ~US$ 5/mês |
+| `runtime` | Event Hubs + Capture, AKS + Flux, Postgres, identidades das workloads | **Actions → `env` → up/down**; destroy automático às 00:00 BRT | US$ 0 |
+
+Os eventos capturados e as tabelas do Lakehouse **sobrevivem** ao `down`. O banco transacional e o cluster são recriados do zero a cada `up`, com o cluster restaurado 100% pelo Git (GitOps).
+
+## Onboarding de domínio
+
+Um PR em `config/domains/dev.yaml`:
+
+```yaml
+pedidos:
+  aggregates:
+    - name: pedido
+      consumer_groups: [pagamentos]
+  workloads: [pedidos-api, outbox-relay]
+  database: true
+```
+
+| Gera | Exemplo |
 |---|---|
-| Event hub por agregado (+ Capture Avro → ADLS) | `pedidos.pedido.v1` |
-| Consumer groups declarados | `pagamentos` |
-| Schema group (JSON) | `pedidos` |
-| Container de capture | `capture-pedidos` |
+| Event hub por agregado com Capture → ADLS | `pedidos.pedido.v1` → `capture-pedidos/` |
+| Consumer groups, schema group (JSON) | `pagamentos`, `pedidos` |
 | Managed Identity + federated credential por workload | `id-pedidos-pedidos-api-dev` ↔ `system:serviceaccount:pedidos:pedidos-api` |
-| RBAC | Data Sender nos próprios hubs, Data Receiver no namespace |
-| External location (read-only) do capture | `pedidos_dev_capture` |
-| Catálogo + schemas | `pedidos_dev.{bronze,silver,gold}` |
+| Database no Postgres compartilhado (Entra-only) | `pedidos` |
+| Catálogo UC + schemas | `pedidos_dev.{bronze,silver,gold}` |
 
-**Onboarding de um domínio:** um PR adicionando uma entrada em `stacks/domains/envs/<env>.tfvars`. O plan aparece comentado no PR, e o merge aplica.
+O domínio também precisa de:
+- subjects OIDC em `bootstrap/variables.tf`;
+- `domains/<dominio>/` no [`platform-gitops`](https://github.com/ViniciusOtoni/platform-gitops).
 
 ## GitOps
 
-O stack `domains` cria a `azurerm_kubernetes_flux_configuration`, que aponta para o [`platform-gitops`](https://github.com/ViniciusOtoni/platform-gitops) e tem duas Kustomizations: `infrastructure` e `domains`. Os valores que só o Terraform conhece são injetados nos manifests via `postBuild.substitute`:
+O stack `runtime` cria a `azurerm_kubernetes_flux_configuration`, com as Kustomizations `infrastructure` e `domains`. Os valores que mudam a cada `up` são injetados nos manifests via `postBuild.substitute`:
 - `AZURE_TENANT_ID`
 - `EVENTHUB_NAMESPACE_FQDN`
 - `ACR_LOGIN_SERVER`
+- `POSTGRES_HOST`
 - `ENVIRONMENT`
 - `<DOMINIO>_<WORKLOAD>_CLIENT_ID`
+- `<DOMINIO>_<WORKLOAD>_IDENTITY_NAME`
 
 ## CI/CD
 
-Pipeline em `.github/workflows/terraform.yml`, que usa o [`platform-cicd-workflows`](https://github.com/ViniciusOtoni/platform-cicd-workflows):
+| Workflow | Evento | O que roda |
+|---|---|---|
+| `terraform.yml` | PR | `ci-terraform`: fmt + validate em tudo; **plan** de cada stack comentado no PR |
+| `terraform.yml` | Merge na `main` | `cd-terraform`: apply `foundation` → `lakehouse` |
+| `env.yml` | Manual (`up`/`down`) e diário às 03:00 UTC (`down`) | `cd-terraform` no stack `runtime` (`destroy: true` no down) |
 
-| Evento | O que roda |
-|---|---|
-| PR | `ci-terraform`: fmt + validate em tudo; **plan** de cada stack comentado no PR |
-| Merge na `main` | `cd-terraform`: apply `core` → `lakehouse` → `domains` (Environment `dev`) |
+Os workflows vêm do [`platform-cicd-workflows@v1`](https://github.com/ViniciusOtoni/platform-cicd-workflows). Sem a variável `AZURE_CLIENT_ID`, roda só a validação.
 
-Enquanto a variável `AZURE_CLIENT_ID` não estiver definida no repositório, roda só a validação (sem plan nem apply).
+## Restrições da assinatura (Azure for Students)
 
-## Primeira execução (passo a passo)
+- **Regiões permitidas por policy:** `eastus2` (padrão), `canadacentral`, `southcentralus`, `mexicocentral` e `chilecentral`.
+- **Cota:** 6 vCPUs no total, **0 em DASv5/DSv5**. Por isso o AKS usa `Standard_B2as_v2` e o Databricks precisa de **serverless**.
+- **Tenant:** App Registrations bloqueadas (o usuário não vira owner). Por isso o OIDC usa Managed Identity (ADR-0009).
 
-> ⚠️ Os passos 1 e 4 **criam recursos com custo** na Azure.
+## Primeira execução
 
-Pré-requisitos: Azure CLI (`az login` com um usuário Owner da subscription), Terraform ≥ 1.9 e `gh` autenticado.
-
-1. **Bootstrap** (local):
+1. **Bootstrap** (local, uma vez). ✅ Já executado:
    ```bash
-   cd bootstrap
-   terraform init
-   terraform apply -var subscription_id=<SUBSCRIPTION_ID>
+   cd bootstrap && terraform init
+   terraform apply -parallelism=1 -var subscription_id=<SUBSCRIPTION_ID>
    ```
-2. **Preencher os IDs** (não são segredos), usando os outputs do bootstrap, em:
-   - `stacks/core/envs/dev.tfvars`: `subscription_id`, `deployer_principal_id` (= `deployer_object_id`)
-   - `stacks/lakehouse/envs/dev.tfvars`: `deployer_client_id`
-   - `stacks/domains/envs/dev.tfvars`: `subscription_id`
-3. **Configurar o GitHub:**
-   ```bash
-   scripts/configure-github.sh platform-infra infra dev
-   ```
-4. Abrir um PR com o passo 2. Revisar os plans. Fazer o merge, que aplica os stacks.
-5. **Configurar os repositórios de domínio** quando forem criados:
-   ```bash
-   scripts/configure-github.sh pedidos-service deployer dev prd -- ACR_NAME=<acr>
-   ```
+2. **GitHub:** `scripts/configure-github.sh platform-infra infra dev`.
+3. **Merge na `main`:** aplica `foundation` + `lakehouse`.
+4. **Sessão de estudo:** Actions → `env` → `up` (~15 min). Ao final, `down`.
 
-### Custo e limpeza
+## Pontos a validar no primeiro `up`
 
-Em dev, os itens que custam são:
-- AKS: 1 nó D2as_v5.
-- Event Hubs Standard: 1 TU, mais o Capture.
-- Databricks: só cobra quando há compute rodando.
-- ADLS e ACR Basic: centavos.
-
-Para destruir o ambiente, rode `terraform destroy` na ordem inversa: `domains` → `lakehouse` → `core`.
-
-## Decisões e pontos a validar
-
-- **azurerm fixado em `~> 4.x`.** A 5.x já existe; a migração será tratada em um ADR próprio.
-- **Event Hubs com `local_authentication_enabled = false`** (sem SAS). Os clientes usam Workload Identity, e o Kafka usa OAuth.
-- **ADLS com shared key habilitada**, porque o Capture via azurerm não suporta managed identity no destino. Isso deve ser reavaliado.
-- **Schema Registry:** o RBAC das workloads no schema group será adicionado na Fase 2, junto com o `platform-event-sdk`.
-- **File events do UC:** o Access Connector já tem as roles de fila e Event Grid. A habilitação na external location será validada na Fase 4.
-- **Primeiro PR antes do `core` aplicado:** o plan de `lakehouse`/`domains` falha porque o state do `core` ainda não existe. O fluxo esperado é aplicar o `core` primeiro.
+- Capture com Event Hubs sem SAS (`local_authentication_enabled = false`).
+- `post_build.substitute` da flux configuration.
+- Permissões de *file events* do UC (as roles de fila e Event Grid já estão no Access Connector).
+- Disponibilidade de **serverless** no workspace da Azure for Students.
 
 ## ADRs relacionados
 
-ADR-0001, 0003, 0004, 0006, 0007 e 0008, em `platform-docs/adr` (local).
+ADR-0001, 0003, 0004, 0006, 0007, 0008, 0009, 0010 e 0011, em `platform-docs/adr` (local).

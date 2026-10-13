@@ -1,4 +1,6 @@
-# Landing zone da plataforma (C1): recursos compartilhados por todos os domínios.
+# Foundation (C1, ADR-0010): camada PERSISTENTE e barata da plataforma.
+# ADLS (dados do Lakehouse e arquivos do Capture), ACR (imagens) e Databricks (workspace + Access Connector).
+# O runtime caro (Event Hubs, AKS, Postgres) fica no stack "runtime", que é efêmero.
 
 locals {
   prefix = "edp-${var.environment}"
@@ -6,10 +8,11 @@ locals {
     project    = "edp"
     env        = var.environment
     managed_by = "terraform"
-    stack      = "core"
+    stack      = "foundation"
   }
 }
 
+# Sufixo estável: também é usado pelo runtime para manter nomes globais iguais entre sessões.
 resource "random_string" "suffix" {
   length  = 5
   special = false
@@ -23,8 +26,7 @@ resource "azurerm_resource_group" "this" {
 }
 
 # ---------------------------------------------------------------- ADLS Gen2
-# Um storage para o Lakehouse: container "lakehouse" (managed storage do UC)
-# e containers "capture-<dominio>" (criados no módulo domain).
+# Containers: "lakehouse" (managed storage do UC) e "capture-<dominio>" (stack lakehouse).
 resource "azurerm_storage_account" "lake" {
   name                            = "stedp${var.environment}${random_string.suffix.result}"
   resource_group_name             = azurerm_resource_group.this.name
@@ -46,19 +48,6 @@ resource "azurerm_storage_container" "lakehouse" {
   container_access_type = "private"
 }
 
-# ---------------------------------------------------------------- Event Hubs (backbone)
-resource "azurerm_eventhub_namespace" "this" {
-  name                          = "evhns-${local.prefix}-${random_string.suffix.result}"
-  resource_group_name           = azurerm_resource_group.this.name
-  location                      = azurerm_resource_group.this.location
-  sku                           = "Standard"
-  capacity                      = var.eventhub_capacity
-  local_authentication_enabled  = false # sem SAS: apenas Entra ID (Workload Identity)
-  public_network_access_enabled = true
-  minimum_tls_version           = "1.2"
-  tags                          = local.tags
-}
-
 # ---------------------------------------------------------------- ACR
 resource "azurerm_container_registry" "this" {
   name                = "acredp${var.environment}${random_string.suffix.result}"
@@ -73,50 +62,6 @@ resource "azurerm_role_assignment" "deployer_acr_push" {
   scope                = azurerm_container_registry.this.id
   role_definition_name = "AcrPush"
   principal_id         = var.deployer_principal_id
-}
-
-# ---------------------------------------------------------------- AKS + Flux
-resource "azurerm_kubernetes_cluster" "this" {
-  name                      = "aks-${local.prefix}"
-  resource_group_name       = azurerm_resource_group.this.name
-  location                  = azurerm_resource_group.this.location
-  dns_prefix                = "aks-${local.prefix}"
-  sku_tier                  = "Free"
-  oidc_issuer_enabled       = true
-  workload_identity_enabled = true
-  tags                      = local.tags
-
-  default_node_pool {
-    name                        = "system"
-    vm_size                     = var.aks_node_vm_size
-    node_count                  = var.aks_node_count
-    os_disk_type                = "Managed"
-    temporary_name_for_rotation = "systemtmp"
-  }
-
-  identity {
-    type = "SystemAssigned"
-  }
-
-  network_profile {
-    network_plugin      = "azure"
-    network_plugin_mode = "overlay"
-  }
-}
-
-resource "azurerm_role_assignment" "aks_acr_pull" {
-  scope                            = azurerm_container_registry.this.id
-  role_definition_name             = "AcrPull"
-  principal_id                     = azurerm_kubernetes_cluster.this.kubelet_identity[0].object_id
-  skip_service_principal_aad_check = true
-}
-
-# Flux v2 gerenciado pela Azure (ADR-0007). A configuração (repo/kustomizations)
-# fica no stack "domains", que conhece as identidades das workloads.
-resource "azurerm_kubernetes_cluster_extension" "flux" {
-  name           = "flux"
-  cluster_id     = azurerm_kubernetes_cluster.this.id
-  extension_type = "microsoft.flux"
 }
 
 # ---------------------------------------------------------------- Databricks

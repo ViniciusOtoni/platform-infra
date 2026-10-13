@@ -1,0 +1,21 @@
+# Domínios on-boarded no ambiente dev (ADR-0004).
+# Onboarding = PR adicionando uma entrada aqui. Lido por dois stacks:
+#   - lakehouse (persistente): container de capture, external location, catálogo <dominio>_dev
+#   - runtime   (efêmero):     event hubs + Capture, identidades das workloads, database no Postgres
+#
+# Campos:
+#   aggregates[]: name, major_version (1), partition_count (2), message_retention_days (1), consumer_groups ([])
+#   workloads[]:  ServiceAccounts do namespace <dominio> que recebem Workload Identity
+#   database:     cria o database <dominio> no Postgres compartilhado (database-per-service)
+#   catalog_grants: principal -> privilégios extras no catálogo
+
+pedidos:
+  aggregates:
+    - name: pedido
+      partition_count: 2
+      # Pagamentos reage a PedidoCriado/PedidoCancelado (saga por coreografia).
+      consumer_groups: [pagamentos]
+  workloads: [pedidos-api, outbox-relay]
+  database: true
+
+# pagamentos: on-boarded na Fase 5, via template (prova do self-service).

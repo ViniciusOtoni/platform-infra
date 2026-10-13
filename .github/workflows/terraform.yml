@@ -1,5 +1,6 @@
 # CI: validate em tudo; plan dos stacks no PR (comentado).
-# CD: apply sequencial core -> lakehouse -> domains no merge (só quando o Azure está configurado).
+# CD: apply dos stacks PERSISTENTES (foundation -> lakehouse) no merge.
+# O stack runtime (efêmero) NÃO é aplicado aqui: ele sobe/desce pelo workflow "env" (ADR-0010).
 name: terraform
 
 on:
@@ -17,7 +18,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        stack: [core, lakehouse, domains]
+        stack: [foundation, lakehouse, runtime]
     uses: ViniciusOtoni/platform-cicd-workflows/.github/workflows/ci-terraform.yml@v1
     with:
       working-directory: stacks/${{ matrix.stack }}
@@ -31,38 +32,28 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        dir: [bootstrap, modules/domain]
+        dir: [bootstrap, modules/domain-data, modules/domain-runtime]
     uses: ViniciusOtoni/platform-cicd-workflows/.github/workflows/ci-terraform.yml@v1
     with:
       working-directory: ${{ matrix.dir }}
       run-plan: false
 
-  cd-core:
+  cd-foundation:
     needs: [ci-stacks, ci-modules]
     if: github.event_name == 'push' && vars.AZURE_CLIENT_ID != ''
     uses: ViniciusOtoni/platform-cicd-workflows/.github/workflows/cd-terraform.yml@v1
     with:
-      working-directory: stacks/core
+      working-directory: stacks/foundation
       environment-name: dev
       azure-client-id: ${{ vars.AZURE_CLIENT_ID }}
       azure-tenant-id: ${{ vars.AZURE_TENANT_ID }}
       azure-subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
 
   cd-lakehouse:
-    needs: cd-core
+    needs: cd-foundation
     uses: ViniciusOtoni/platform-cicd-workflows/.github/workflows/cd-terraform.yml@v1
     with:
       working-directory: stacks/lakehouse
-      environment-name: dev
-      azure-client-id: ${{ vars.AZURE_CLIENT_ID }}
-      azure-tenant-id: ${{ vars.AZURE_TENANT_ID }}
-      azure-subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
-
-  cd-domains:
-    needs: cd-lakehouse
-    uses: ViniciusOtoni/platform-cicd-workflows/.github/workflows/cd-terraform.yml@v1
-    with:
-      working-directory: stacks/domains
       environment-name: dev
       azure-client-id: ${{ vars.AZURE_CLIENT_ID }}
       azure-tenant-id: ${{ vars.AZURE_TENANT_ID }}

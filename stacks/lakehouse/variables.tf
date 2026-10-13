@@ -1,3 +1,8 @@
+variable "subscription_id" {
+  description = "Subscription Azure da plataforma."
+  type        = string
+}
+
 variable "environment" {
   description = "Nome do ambiente (dev, prd)."
   type        = string
@@ -16,6 +21,6 @@ variable "tfstate_storage_account_name" {
 }
 
 variable "deployer_client_id" {
-  description = "Client ID (application id) do SP deployer; vira service principal no workspace."
+  description = "Client ID da identidade deployer (output deployer_client_id do bootstrap)."
   type        = string
 }

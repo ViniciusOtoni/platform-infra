@@ -1,19 +1,21 @@
-# Objetos compartilhados do Unity Catalog. Objetos por domínio ficam no stack "domains".
+# Lakehouse (PERSISTENTE): objetos compartilhados do Unity Catalog + parte de dados de cada domínio.
 
-data "terraform_remote_state" "core" {
+data "terraform_remote_state" "foundation" {
   backend = "azurerm"
   config = {
     resource_group_name  = var.tfstate_resource_group_name
     storage_account_name = var.tfstate_storage_account_name
     container_name       = "tfstate"
-    key                  = "core/${var.environment}.tfstate"
+    key                  = "foundation/${var.environment}.tfstate"
     use_azuread_auth     = true
   }
 }
 
 locals {
-  core          = data.terraform_remote_state.core.outputs
-  lakehouse_url = "abfss://${local.core.lakehouse_container_name}@${local.core.storage_account_name}.dfs.core.windows.net/"
+  foundation    = data.terraform_remote_state.foundation.outputs
+  lakehouse_url = "abfss://${local.foundation.lakehouse_container_name}@${local.foundation.storage_account_name}.dfs.core.windows.net/"
+  # Fonte única dos domínios (compartilhada com o stack runtime).
+  domains = yamldecode(file("${path.module}/../../config/domains/${var.environment}.yaml"))
 }
 
 # Credencial do UC baseada na managed identity do Access Connector (sem segredos).
@@ -22,7 +24,7 @@ resource "databricks_storage_credential" "lake" {
   comment = "Access Connector da plataforma (managed identity). Gerenciado por platform-infra."
 
   azure_managed_identity {
-    access_connector_id = local.core.databricks_access_connector_id
+    access_connector_id = local.foundation.databricks_access_connector_id
   }
 }
 
@@ -34,10 +36,27 @@ resource "databricks_external_location" "lakehouse" {
   comment         = "Managed storage dos catálogos de domínio. Gerenciado por platform-infra."
 }
 
-# SP usado pelos pipelines de domínio (bundle deploy / run_as dos jobs).
+# Identidade usada pelos pipelines de domínio (bundle deploy / run_as dos jobs).
+# Managed identity entra no Databricks como service principal pelo client ID.
 resource "databricks_service_principal" "deployer" {
   application_id        = var.deployer_client_id
-  display_name          = "gh-edp-deployer"
+  display_name          = "id-gh-edp-deployer"
   workspace_access      = true
   databricks_sql_access = true
+}
+
+module "domain_data" {
+  source   = "../../modules/domain-data"
+  for_each = local.domains
+
+  name                     = each.key
+  environment              = var.environment
+  storage_account_id       = local.foundation.storage_account_id
+  storage_account_name     = local.foundation.storage_account_name
+  lakehouse_container_name = local.foundation.lakehouse_container_name
+  storage_credential_name  = databricks_storage_credential.lake.name
+  deployer_application_id  = databricks_service_principal.deployer.application_id
+  catalog_grants           = try(each.value.catalog_grants, {})
+
+  depends_on = [databricks_external_location.lakehouse]
 }

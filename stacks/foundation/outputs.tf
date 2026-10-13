@@ -1,5 +1,14 @@
+output "suffix" {
+  description = "Sufixo estável para nomes globais (reutilizado pelo runtime)."
+  value       = random_string.suffix.result
+}
+
 output "resource_group_name" {
   value = azurerm_resource_group.this.name
+}
+
+output "resource_group_id" {
+  value = azurerm_resource_group.this.id
 }
 
 output "location" {
@@ -18,16 +27,8 @@ output "lakehouse_container_name" {
   value = azurerm_storage_container.lakehouse.name
 }
 
-output "eventhub_namespace_id" {
-  value = azurerm_eventhub_namespace.this.id
-}
-
-output "eventhub_namespace_name" {
-  value = azurerm_eventhub_namespace.this.name
-}
-
-output "eventhub_namespace_fqdn" {
-  value = "${azurerm_eventhub_namespace.this.name}.servicebus.windows.net"
+output "acr_id" {
+  value = azurerm_container_registry.this.id
 }
 
 output "acr_name" {
@@ -36,18 +37,6 @@ output "acr_name" {
 
 output "acr_login_server" {
   value = azurerm_container_registry.this.login_server
-}
-
-output "aks_id" {
-  value = azurerm_kubernetes_cluster.this.id
-}
-
-output "aks_name" {
-  value = azurerm_kubernetes_cluster.this.name
-}
-
-output "aks_oidc_issuer_url" {
-  value = azurerm_kubernetes_cluster.this.oidc_issuer_url
 }
 
 output "databricks_workspace_resource_id" {
