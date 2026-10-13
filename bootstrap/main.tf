@@ -9,6 +9,10 @@ terraform {
       source  = "hashicorp/azurerm"
       version = "~> 4.40"
     }
+    http = {
+      source  = "hashicorp/http"
+      version = "~> 3.5"
+    }
   }
 }
 
@@ -17,7 +21,6 @@ provider "azurerm" {
   subscription_id     = var.subscription_id
   storage_use_azuread = true
 }
-
 
 data "azurerm_client_config" "current" {}
 data "azurerm_subscription" "current" {}
@@ -85,10 +88,46 @@ resource "azurerm_user_assigned_identity" "github" {
   tags                = local.tags
 }
 
+# O GitHub emite o subject OIDC no formato IMUTÁVEL, que inclui os IDs numéricos:
+#   repo:<owner>@<owner_id>/<repo>@<repo_id>:<contexto>
+# Isso impede que um repositório recriado com o mesmo nome herde o acesso. Os IDs vêm da API
+# pública do GitHub, então o repositório precisa existir antes de ser adicionado aqui.
 locals {
+  github_repos = toset(flatten([
+    for subjects in values(var.github_identities) : [for s in subjects : split(":", s)[0]]
+  ]))
+}
+
+data "http" "github_repo" {
+  for_each = local.github_repos
+
+  url             = "https://api.github.com/repos/${var.github_owner}/${each.key}"
+  request_headers = { Accept = "application/vnd.github+json" }
+
+  lifecycle {
+    postcondition {
+      condition     = self.status_code == 200
+      error_message = "Repositório ${var.github_owner}/${each.key} não encontrado. Crie-o antes de adicioná-lo em github_identities."
+    }
+  }
+}
+
+locals {
+  github_subject_prefix = {
+    for repo, r in data.http.github_repo : repo => format(
+      "repo:%s@%d/%s@%d",
+      var.github_owner, jsondecode(r.response_body).owner.id,
+      repo, jsondecode(r.response_body).id,
+    )
+  }
+
   federated_credentials = merge([
     for role, subjects in var.github_identities : {
-      for s in subjects : "${role}/${s}" => { role = role, subject = s }
+      for s in subjects : "${role}/${s}" => {
+        role    = role
+        name    = s
+        subject = "${local.github_subject_prefix[split(":", s)[0]]}:${join(":", slice(split(":", s), 1, length(split(":", s))))}"
+      }
     }
   ]...)
 }
@@ -98,12 +137,12 @@ locals {
 resource "azurerm_federated_identity_credential" "github" {
   for_each = local.federated_credentials
 
-  name                = substr(replace(each.value.subject, "/[^a-zA-Z0-9-_]/", "-"), 0, 120)
+  name                = substr(replace(each.value.name, "/[^a-zA-Z0-9-_]/", "-"), 0, 120)
   resource_group_name = azurerm_resource_group.tfstate.name
   parent_id           = azurerm_user_assigned_identity.github[each.value.role].id
   audience            = ["api://AzureADTokenExchange"]
   issuer              = "https://token.actions.githubusercontent.com"
-  subject             = "repo:${var.github_owner}/${each.value.subject}"
+  subject             = each.value.subject
 }
 
 resource "azurerm_role_assignment" "infra_contributor" {
