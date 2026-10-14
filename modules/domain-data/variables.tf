@@ -43,3 +43,13 @@ variable "catalog_grants" {
   type        = map(list(string))
   default     = {}
 }
+
+variable "subscription_id" {
+  description = "Subscription onde a Databricks cria a fila dos managed file events."
+  type        = string
+}
+
+variable "file_events_resource_group" {
+  description = "Resource group (o do storage) onde a Databricks cria a fila dos managed file events."
+  type        = string
+}

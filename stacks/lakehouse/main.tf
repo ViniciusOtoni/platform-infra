@@ -49,14 +49,16 @@ module "domain_data" {
   source   = "../../modules/domain-data"
   for_each = local.domains
 
-  name                     = each.key
-  environment              = var.environment
-  storage_account_id       = local.foundation.storage_account_id
-  storage_account_name     = local.foundation.storage_account_name
-  lakehouse_container_name = local.foundation.lakehouse_container_name
-  storage_credential_name  = databricks_storage_credential.lake.name
-  deployer_application_id  = databricks_service_principal.deployer.application_id
-  catalog_grants           = try(each.value.catalog_grants, {})
+  name                       = each.key
+  environment                = var.environment
+  storage_account_id         = local.foundation.storage_account_id
+  storage_account_name       = local.foundation.storage_account_name
+  lakehouse_container_name   = local.foundation.lakehouse_container_name
+  storage_credential_name    = databricks_storage_credential.lake.name
+  deployer_application_id    = databricks_service_principal.deployer.application_id
+  catalog_grants             = try(each.value.catalog_grants, {})
+  subscription_id            = var.subscription_id
+  file_events_resource_group = local.foundation.resource_group_name
 
   depends_on = [databricks_external_location.lakehouse]
 }
