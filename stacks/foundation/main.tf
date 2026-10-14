@@ -99,6 +99,15 @@ resource "azurerm_role_assignment" "access_connector_queue" {
   principal_id         = azurerm_databricks_access_connector.this.identity[0].principal_id
 }
 
+# Managed file events (padrão das external locations novas do UC) criam a assinatura do Event Grid
+# no storage: a API exige Microsoft.Storage/storageAccounts/write no escopo do storage (linked scope).
+# Sem esta role, o file arrival trigger falha com LinkedAuthorizationFailed e nunca dispara.
+resource "azurerm_role_assignment" "access_connector_storage_account" {
+  scope                = azurerm_storage_account.lake.id
+  role_definition_name = "Storage Account Contributor"
+  principal_id         = azurerm_databricks_access_connector.this.identity[0].principal_id
+}
+
 resource "azurerm_role_assignment" "access_connector_eventgrid" {
   scope                = azurerm_resource_group.this.id
   role_definition_name = "EventGrid EventSubscription Contributor"
@@ -115,5 +124,6 @@ resource "time_sleep" "access_connector_rbac" {
     storage  = azurerm_role_assignment.access_connector_storage.id
     queue    = azurerm_role_assignment.access_connector_queue.id
     eventgrd = azurerm_role_assignment.access_connector_eventgrid.id
+    account  = azurerm_role_assignment.access_connector_storage_account.id
   }
 }
