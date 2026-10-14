@@ -48,5 +48,7 @@ output "databricks_workspace_url" {
 }
 
 output "databricks_access_connector_id" {
-  value = azurerm_databricks_access_connector.this.id
+  # Só é exposto após a propagação das roles (time_sleep).
+  value      = azurerm_databricks_access_connector.this.id
+  depends_on = [time_sleep.access_connector_rbac]
 }
