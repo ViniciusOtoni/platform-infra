@@ -31,7 +31,10 @@ resource "databricks_external_location" "capture" {
   url             = "abfss://${azurerm_storage_container.capture.name}@${var.storage_account_name}.dfs.core.windows.net/"
   credential_name = var.storage_credential_name
   read_only       = true
-  comment         = "Arquivos do Event Hubs Capture do domínio ${var.name} (fonte da Bronze)."
+  # Managed file events (Event Grid no storage) alimentam o file arrival trigger e o Auto Loader.
+  # Exigem Storage Account Contributor no Access Connector (stack foundation, ADR-0001).
+  enable_file_events = true
+  comment            = "Arquivos do Event Hubs Capture do domínio ${var.name} (fonte da Bronze)."
 }
 
 resource "databricks_catalog" "this" {
