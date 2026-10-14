@@ -35,6 +35,14 @@ resource "databricks_external_location" "capture" {
   # Exigem Storage Account Contributor no Access Connector (stack foundation, ADR-0001).
   enable_file_events = true
   comment            = "Arquivos do Event Hubs Capture do domínio ${var.name} (fonte da Bronze)."
+
+  # Fila (Azure Queue Storage) + assinatura do Event Grid criadas e geridas pela Databricks.
+  file_event_queue {
+    managed_aqs {
+      resource_group  = var.file_events_resource_group
+      subscription_id = var.subscription_id
+    }
+  }
 }
 
 resource "databricks_catalog" "this" {
