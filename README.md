@@ -81,7 +81,8 @@ Os workflows vêm do [`platform-cicd-workflows@v1`](https://github.com/ViniciusO
 ## Restrições da assinatura (Azure for Students)
 
 - **Regiões permitidas por policy:** `eastus2` (padrão), `canadacentral`, `southcentralus`, `mexicocentral` e `chilecentral`.
-- **Cota:** 6 vCPUs no total, **0 em DASv5/DSv5**. Por isso o AKS usa `Standard_B2as_v2` e o Databricks precisa de **serverless**.
+- **Cota:** 6 vCPUs no total, **0 em DASv5/DSv5**. O AKS também **rejeita a família B**, e só a DSv3 tem cota: por isso usa `Standard_D2s_v3`. O Databricks precisa de **serverless**.
+- **Postgres Flexible bloqueado** em `eastus2` e `southcentralus` para a oferta Students: o servidor fica em `canadacentral` (variável `postgres_location`).
 - **Tenant:** App Registrations bloqueadas (o usuário não vira owner). Por isso o OIDC usa Managed Identity (ADR-0009).
 
 ## Primeira execução

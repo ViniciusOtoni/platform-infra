@@ -27,15 +27,21 @@ variable "eventhub_capacity" {
 }
 
 variable "aks_node_vm_size" {
-  description = "SKU do nó do AKS. Students tem cota 0 em DASv5/DSv5; Basv2 tem cota."
+  description = "SKU do nó do AKS. Na Students, o AKS só aceita famílias D/E/F v3+ e só DSv3 tem cota (4 vCPUs)."
   type        = string
-  default     = "Standard_B2as_v2"
+  default     = "Standard_D2s_v3"
 }
 
 variable "aks_node_count" {
   description = "Quantidade de nós do pool de sistema."
   type        = number
   default     = 1
+}
+
+variable "postgres_location" {
+  description = "Região do Postgres. Na Students, Flexible Server é bloqueado em eastus2/southcentralus."
+  type        = string
+  default     = "canadacentral"
 }
 
 variable "postgres_sku" {
