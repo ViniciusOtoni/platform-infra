@@ -20,8 +20,9 @@ locals {
 
 # Credencial do UC baseada na managed identity do Access Connector (sem segredos).
 resource "databricks_storage_credential" "lake" {
-  name    = "edp_${var.environment}_lake"
-  comment = "Access Connector da plataforma (managed identity). Gerenciado por platform-infra."
+  name          = "edp_${var.environment}_lake"
+  comment       = "Access Connector da plataforma (managed identity). Gerenciado por platform-infra."
+  force_destroy = true
 
   azure_managed_identity {
     access_connector_id = local.foundation.databricks_access_connector_id
@@ -33,6 +34,7 @@ resource "databricks_external_location" "lakehouse" {
   name            = "edp_${var.environment}_lakehouse"
   url             = local.lakehouse_url
   credential_name = databricks_storage_credential.lake.name
+  force_destroy   = true
   comment         = "Managed storage dos catálogos de domínio. Gerenciado por platform-infra."
 }
 

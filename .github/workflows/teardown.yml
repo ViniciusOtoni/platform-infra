@@ -1,0 +1,64 @@
+# Destrói TODO o ambiente gerenciado pelos stacks (runtime -> lakehouse -> foundation).
+# O bootstrap (tfstate + identidades OIDC) é destruído localmente depois: este workflow depende dele.
+name: teardown
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirmacao:
+        description: Digite "destruir dev" para confirmar
+        type: string
+        required: true
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: env-runtime-dev
+  cancel-in-progress: false
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Confirmar
+        env:
+          CONFIRMACAO: ${{ inputs.confirmacao }}
+        run: |
+          if [ "$CONFIRMACAO" != "destruir dev" ]; then
+            echo "::error::confirmação incorreta"; exit 1
+          fi
+
+  runtime:
+    needs: check
+    uses: ViniciusOtoni/platform-cicd-workflows/.github/workflows/cd-terraform.yml@v1
+    with:
+      working-directory: stacks/runtime
+      environment-name: dev
+      destroy: true
+      azure-client-id: ${{ vars.AZURE_CLIENT_ID }}
+      azure-tenant-id: ${{ vars.AZURE_TENANT_ID }}
+      azure-subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+  lakehouse:
+    needs: runtime
+    uses: ViniciusOtoni/platform-cicd-workflows/.github/workflows/cd-terraform.yml@v1
+    with:
+      working-directory: stacks/lakehouse
+      environment-name: dev
+      destroy: true
+      azure-client-id: ${{ vars.AZURE_CLIENT_ID }}
+      azure-tenant-id: ${{ vars.AZURE_TENANT_ID }}
+      azure-subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+  foundation:
+    needs: lakehouse
+    uses: ViniciusOtoni/platform-cicd-workflows/.github/workflows/cd-terraform.yml@v1
+    with:
+      working-directory: stacks/foundation
+      environment-name: dev
+      destroy: true
+      azure-client-id: ${{ vars.AZURE_CLIENT_ID }}
+      azure-tenant-id: ${{ vars.AZURE_TENANT_ID }}
+      azure-subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
