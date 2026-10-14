@@ -60,3 +60,21 @@ module "domain_data" {
 
   depends_on = [databricks_external_location.lakehouse]
 }
+
+# ---------------------------------------------------------------- acesso humano (como código)
+data "databricks_group" "admins" {
+  display_name = "admins"
+}
+
+resource "databricks_user" "admin" {
+  for_each = toset(var.workspace_admins)
+
+  user_name = each.key
+}
+
+resource "databricks_group_member" "admin" {
+  for_each = toset(var.workspace_admins)
+
+  group_id  = data.databricks_group.admins.id
+  member_id = databricks_user.admin[each.key].id
+}

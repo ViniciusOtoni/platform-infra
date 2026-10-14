@@ -24,3 +24,9 @@ variable "deployer_client_id" {
   description = "Client ID da identidade deployer (output deployer_client_id do bootstrap)."
   type        = string
 }
+
+variable "workspace_admins" {
+  description = "Usuários humanos (UPN) administradores do workspace: acesso declarado como código."
+  type        = list(string)
+  default     = []
+}
