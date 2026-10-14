@@ -23,6 +23,8 @@ resource "databricks_storage_credential" "lake" {
   name          = "edp_${var.environment}_lake"
   comment       = "Access Connector da plataforma (managed identity). Gerenciado por platform-infra."
   force_destroy = true
+  # Necessário para alterar a credencial enquanto há external locations dependentes.
+  force_update = true
 
   azure_managed_identity {
     access_connector_id = local.foundation.databricks_access_connector_id
@@ -35,6 +37,7 @@ resource "databricks_external_location" "lakehouse" {
   url             = local.lakehouse_url
   credential_name = databricks_storage_credential.lake.name
   force_destroy   = true
+  force_update    = true
   comment         = "Managed storage dos catálogos de domínio. Gerenciado por platform-infra."
 }
 

@@ -32,6 +32,7 @@ resource "databricks_external_location" "capture" {
   credential_name = var.storage_credential_name
   read_only       = true
   force_destroy   = true
+  force_update    = true
   comment         = "Arquivos do Event Hubs Capture do domínio ${var.name} (fonte da Bronze)."
 }
 
