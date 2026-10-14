@@ -1,11 +1,9 @@
-# Módulo de onboarding de domínio (C2 / ADR-0004): Bounded Context = unidade de provisionamento.
-# Cria, para um domínio: event hubs por agregado (+ Capture), consumer groups, schema group,
-# container de capture, identidades de workload (Workload Identity) e catálogo UC com bronze/silver/gold.
+# Parte EFÊMERA do onboarding de domínio (ADR-0004 / ADR-0010), recriada a cada `env-up`:
+# event hubs por agregado (+ Capture para o container persistente), consumer groups, schema group,
+# identidades das workloads (Workload Identity), RBAC e database no Postgres compartilhado.
 
 locals {
-  tags         = merge(var.tags, { domain = var.name })
-  catalog_name = "${var.name}_${var.environment}"
-  aggregates   = { for a in var.aggregates : a.name => a }
+  aggregates = { for a in var.aggregates : a.name => a }
 
   consumer_groups = merge([
     for a in var.aggregates : {
@@ -15,12 +13,6 @@ locals {
 }
 
 # ---------------------------------------------------------------- Event backbone
-resource "azurerm_storage_container" "capture" {
-  name                  = "capture-${var.name}"
-  storage_account_id    = var.storage_account_id
-  container_access_type = "private"
-}
-
 resource "azurerm_eventhub" "aggregate" {
   for_each = local.aggregates
 
@@ -29,7 +21,7 @@ resource "azurerm_eventhub" "aggregate" {
   partition_count   = each.value.partition_count
   message_retention = each.value.message_retention_days
 
-  # Capture -> ADLS (ADR-0001).
+  # Capture -> ADLS (ADR-0001). O container é persistente (stack lakehouse).
   # Caminho: capture-<dominio>/<namespace>/<eventhub>/<particao>/AAAA/MM/DD/HH/mm/ss.avro
   capture_description {
     enabled             = true
@@ -41,7 +33,7 @@ resource "azurerm_eventhub" "aggregate" {
     destination {
       name                = "EventHubArchive.AzureBlockBlob"
       archive_name_format = "{Namespace}/{EventHub}/{PartitionId}/{Year}/{Month}/{Day}/{Hour}/{Minute}/{Second}"
-      blob_container_name = azurerm_storage_container.capture.name
+      blob_container_name = var.capture_container_name
       storage_account_id  = var.storage_account_id
     }
   }
@@ -71,7 +63,7 @@ resource "azurerm_user_assigned_identity" "workload" {
   name                = "id-${var.name}-${each.key}-${var.environment}"
   resource_group_name = var.resource_group_name
   location            = var.location
-  tags                = local.tags
+  tags                = var.tags
 }
 
 resource "azurerm_federated_identity_credential" "workload" {
@@ -106,55 +98,25 @@ resource "azurerm_role_assignment" "receiver" {
   principal_id         = azurerm_user_assigned_identity.workload[each.key].principal_id
 }
 
-# ---------------------------------------------------------------- Unity Catalog
-resource "databricks_external_location" "capture" {
-  name            = "${var.name}_${var.environment}_capture"
-  url             = "abfss://${azurerm_storage_container.capture.name}@${var.storage_account_name}.dfs.core.windows.net/"
-  credential_name = var.storage_credential_name
-  read_only       = true
-  comment         = "Arquivos do Event Hubs Capture do domínio ${var.name} (fonte da Bronze)."
+# ---------------------------------------------------------------- Postgres (database-per-service, ADR-0011)
+resource "azurerm_postgresql_flexible_server_database" "this" {
+  count = var.database ? 1 : 0
+
+  name      = var.name
+  server_id = var.postgres_server_id
+  charset   = "UTF8"
+  collation = "en_US.utf8"
 }
 
-resource "databricks_catalog" "this" {
-  name         = local.catalog_name
-  storage_root = "abfss://${var.lakehouse_container_name}@${var.storage_account_name}.dfs.core.windows.net/${local.catalog_name}"
-  comment      = "Catálogo do bounded context ${var.name} (${var.environment})."
-  properties = {
-    domain = var.name
-    env    = var.environment
-  }
-}
+# Autenticação só por Entra ID: cada workload do domínio é administrador Entra do servidor.
+# Simplificação de estudo (evita bootstrap SQL de roles); ver ADR-0011 para a evolução.
+resource "azurerm_postgresql_flexible_server_active_directory_administrator" "workload" {
+  for_each = var.database ? toset(var.workloads) : toset([])
 
-resource "databricks_schema" "layer" {
-  for_each = toset(["bronze", "silver", "gold"])
-
-  catalog_name = databricks_catalog.this.name
-  name         = each.key
-  comment      = "Camada ${each.key} do domínio ${var.name}."
-}
-
-resource "databricks_grants" "catalog" {
-  catalog = databricks_catalog.this.name
-
-  grant {
-    principal  = var.deployer_application_id
-    privileges = ["ALL_PRIVILEGES"]
-  }
-
-  dynamic "grant" {
-    for_each = var.catalog_grants
-    content {
-      principal  = grant.key
-      privileges = grant.value
-    }
-  }
-}
-
-resource "databricks_grants" "capture" {
-  external_location = databricks_external_location.capture.id
-
-  grant {
-    principal  = var.deployer_application_id
-    privileges = ["READ_FILES"]
-  }
+  server_name         = var.postgres_server_name
+  resource_group_name = var.resource_group_name
+  tenant_id           = var.tenant_id
+  object_id           = azurerm_user_assigned_identity.workload[each.key].principal_id
+  principal_name      = azurerm_user_assigned_identity.workload[each.key].name
+  principal_type      = "ServicePrincipal"
 }

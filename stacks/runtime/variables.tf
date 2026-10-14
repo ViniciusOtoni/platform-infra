@@ -20,6 +20,36 @@ variable "tfstate_storage_account_name" {
   default     = "sttfedpviniciusotoni"
 }
 
+variable "eventhub_capacity" {
+  description = "Throughput units do namespace Event Hubs (Standard)."
+  type        = number
+  default     = 1
+}
+
+variable "aks_node_vm_size" {
+  description = "SKU do nó do AKS. Students tem cota 0 em DASv5/DSv5; Basv2 tem cota."
+  type        = string
+  default     = "Standard_B2as_v2"
+}
+
+variable "aks_node_count" {
+  description = "Quantidade de nós do pool de sistema."
+  type        = number
+  default     = 1
+}
+
+variable "postgres_sku" {
+  description = "SKU do Postgres Flexible Server."
+  type        = string
+  default     = "B_Standard_B1ms"
+}
+
+variable "postgres_human_admins" {
+  description = "Administradores Entra humanos do Postgres: UPN -> object id."
+  type        = map(string)
+  default     = {}
+}
+
 variable "gitops_repository_url" {
   description = "Repositório GitOps reconciliado pelo Flux."
   type        = string
@@ -30,24 +60,4 @@ variable "gitops_branch" {
   description = "Branch reconciliada pelo Flux."
   type        = string
   default     = "main"
-}
-
-variable "domains" {
-  description = <<-EOT
-    Domínios on-boarded neste ambiente (onboarding = PR adicionando uma entrada).
-    Ver modules/domain/variables.tf para o significado de cada campo.
-  EOT
-  type = map(object({
-    aggregates = list(object({
-      name                   = string
-      major_version          = optional(number, 1)
-      partition_count        = optional(number, 2)
-      message_retention_days = optional(number, 1)
-      consumer_groups        = optional(list(string), [])
-    }))
-    workloads                = optional(list(string), [])
-    catalog_grants           = optional(map(list(string)), {})
-    capture_interval_seconds = optional(number, 300)
-  }))
-  default = {}
 }

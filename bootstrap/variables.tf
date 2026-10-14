@@ -23,9 +23,10 @@ variable "github_owner" {
 
 variable "github_identities" {
   description = <<-EOT
-    Identidades OIDC por papel -> lista de subjects "<repo>:<qualificador>".
-    Qualificadores: "pull_request", "environment:<env>", "ref:refs/heads/<branch>".
-    Limite: 20 federated credentials por App Registration.
+    Identidades OIDC por papel -> lista "<repo>:<contexto>".
+    Contextos: "pull_request", "environment:<env>", "ref:refs/heads/<branch>".
+    O repositório precisa existir (os IDs imutáveis vêm da API do GitHub).
+    Limite: 20 federated credentials por managed identity.
   EOT
   type        = map(list(string))
   default = {
@@ -33,12 +34,9 @@ variable "github_identities" {
       "platform-infra:pull_request",
       "platform-infra:environment:dev",
     ]
-    deployer = [
-      "pedidos-service:environment:dev",
-      "pedidos-service:environment:prd",
-      "pedidos-data:pull_request",
-      "pedidos-data:environment:dev",
-    ]
+    # Fase 2: adicionar pedidos-service (environment:dev|prd) e pedidos-data (pull_request, environment:dev)
+    # assim que os repositórios forem criados.
+    deployer = []
   }
 
   validation {

@@ -8,17 +8,17 @@ output "subscription_id" {
 
 output "infra_client_id" {
   description = "AZURE_CLIENT_ID do repositório platform-infra."
-  value       = module.github_identity["infra"].client_id
+  value       = azurerm_user_assigned_identity.github["infra"].client_id
 }
 
 output "deployer_client_id" {
-  description = "AZURE_CLIENT_ID dos repositórios de domínio."
-  value       = module.github_identity["deployer"].client_id
+  description = "AZURE_CLIENT_ID dos repositórios de domínio (também é o application_id no Databricks)."
+  value       = azurerm_user_assigned_identity.github["deployer"].client_id
 }
 
 output "deployer_object_id" {
-  description = "Object ID do SP deployer (usado em envs/<env>.tfvars dos stacks)."
-  value       = module.github_identity["deployer"].object_id
+  description = "Principal ID do deployer (usado em envs/<env>.tfvars dos stacks)."
+  value       = azurerm_user_assigned_identity.github["deployer"].principal_id
 }
 
 output "tfstate_storage_account_name" {
