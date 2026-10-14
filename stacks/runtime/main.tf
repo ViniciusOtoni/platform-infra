@@ -75,6 +75,13 @@ resource "azurerm_kubernetes_cluster" "this" {
     os_disk_type                = "Managed"
     os_disk_size_gb             = 30
     temporary_name_for_rotation = "systemtmp"
+
+    # Valores que a Azure aplica por padrão; declarados para não gerar drift no plan.
+    upgrade_settings {
+      max_surge                     = "10%"
+      drain_timeout_in_minutes      = 0
+      node_soak_duration_in_minutes = 0
+    }
   }
 
   identity {
@@ -225,6 +232,9 @@ resource "azurerm_kubernetes_flux_configuration" "platform" {
     depends_on                 = ["infrastructure"]
     sync_interval_in_seconds   = 120
     garbage_collection_enabled = true
+    # Espera os workloads ficarem saudáveis, mas sem travar novas revisões por 10 min
+    # quando um deploy quebra (ex.: imagem inexistente).
+    timeout_in_seconds = 180
 
     post_build {
       substitute = local.flux_substitute
