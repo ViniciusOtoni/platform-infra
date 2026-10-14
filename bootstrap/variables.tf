@@ -34,9 +34,10 @@ variable "github_identities" {
       "platform-infra:pull_request",
       "platform-infra:environment:dev",
     ]
-    # Fase 4: adicionar pedidos-data (pull_request, environment:dev) quando o repositório existir.
     deployer = [
       "pedidos-service:environment:dev",
+      "pedidos-data:pull_request",
+      "pedidos-data:environment:dev",
     ]
   }
 
