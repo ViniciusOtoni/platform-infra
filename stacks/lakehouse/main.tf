@@ -22,6 +22,9 @@ locals {
 resource "databricks_storage_credential" "lake" {
   name    = "edp_${var.environment}_lake"
   comment = "Access Connector da plataforma (managed identity). Gerenciado por platform-infra."
+  # Alinha com o state (gravado por um apply parcial). Alterar este atributo exige um update
+  # que a API recusa enquanto houver external locations dependentes.
+  force_destroy = true
 
   azure_managed_identity {
     access_connector_id = local.foundation.databricks_access_connector_id
