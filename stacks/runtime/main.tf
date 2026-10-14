@@ -75,6 +75,13 @@ resource "azurerm_kubernetes_cluster" "this" {
     os_disk_type                = "Managed"
     os_disk_size_gb             = 30
     temporary_name_for_rotation = "systemtmp"
+
+    # Valores que a Azure aplica por padrão; declarados para não gerar drift no plan.
+    upgrade_settings {
+      max_surge                     = "10%"
+      drain_timeout_in_minutes      = 0
+      node_soak_duration_in_minutes = 0
+    }
   }
 
   identity {
