@@ -99,10 +99,13 @@ resource "azurerm_role_assignment" "receiver" {
 }
 
 # Registrar os schemas da própria Published Language (o produtor registra ao subir, ADR-0003/0010).
+# Escopo no NAMESPACE: o data plane do Schema Registry autoriza SchemaGroupWrite no namespace e
+# ignora roles atribuídas no schema group (validado em 2026-10-14). Limitação: um domínio poderia
+# escrever no grupo de outro; a governança real é o gate de contratos no CI (ADR-0005).
 resource "azurerm_role_assignment" "schema_registry_contributor" {
   for_each = toset(var.workloads)
 
-  scope                = azurerm_eventhub_namespace_schema_group.this.id
+  scope                = var.eventhub_namespace_id
   role_definition_name = "Schema Registry Contributor"
   principal_id         = azurerm_user_assigned_identity.workload[each.key].principal_id
 }
