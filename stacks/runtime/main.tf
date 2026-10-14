@@ -225,6 +225,9 @@ resource "azurerm_kubernetes_flux_configuration" "platform" {
     depends_on                 = ["infrastructure"]
     sync_interval_in_seconds   = 120
     garbage_collection_enabled = true
+    # Espera os workloads ficarem saudáveis, mas sem travar novas revisões por 10 min
+    # quando um deploy quebra (ex.: imagem inexistente).
+    timeout_in_seconds = 180
 
     post_build {
       substitute = local.flux_substitute
