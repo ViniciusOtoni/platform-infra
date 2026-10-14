@@ -106,14 +106,18 @@ resource "azurerm_kubernetes_cluster_extension" "flux" {
 resource "azurerm_postgresql_flexible_server" "this" {
   name                          = "psql-${local.prefix}-${local.suffix}"
   resource_group_name           = local.foundation.resource_group_name
-  location                      = local.foundation.location
+  location                      = var.postgres_location
   version                       = "16"
   sku_name                      = var.postgres_sku
   storage_mb                    = 32768
   backup_retention_days         = 7
   public_network_access_enabled = true
-  zone                          = "1"
   tags                          = local.tags
+
+  # A zona é escolhida pela Azure na criação.
+  lifecycle {
+    ignore_changes = [zone]
+  }
 
   authentication {
     active_directory_auth_enabled = true
