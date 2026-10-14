@@ -98,6 +98,24 @@ resource "azurerm_role_assignment" "receiver" {
   principal_id         = azurerm_user_assigned_identity.workload[each.key].principal_id
 }
 
+# Registrar os schemas da própria Published Language (o produtor registra ao subir, ADR-0003/0010).
+resource "azurerm_role_assignment" "schema_registry_contributor" {
+  for_each = toset(var.workloads)
+
+  scope                = azurerm_eventhub_namespace_schema_group.this.id
+  role_definition_name = "Schema Registry Contributor"
+  principal_id         = azurerm_user_assigned_identity.workload[each.key].principal_id
+}
+
+# Ler os schemas de qualquer domínio (consumidores da Published Language).
+resource "azurerm_role_assignment" "schema_registry_reader" {
+  for_each = toset(var.workloads)
+
+  scope                = var.eventhub_namespace_id
+  role_definition_name = "Schema Registry Reader"
+  principal_id         = azurerm_user_assigned_identity.workload[each.key].principal_id
+}
+
 # ---------------------------------------------------------------- Postgres (database-per-service, ADR-0011)
 resource "azurerm_postgresql_flexible_server_database" "this" {
   count = var.database ? 1 : 0
