@@ -104,3 +104,16 @@ resource "azurerm_role_assignment" "access_connector_eventgrid" {
   role_definition_name = "EventGrid EventSubscription Contributor"
   principal_id         = azurerm_databricks_access_connector.this.identity[0].principal_id
 }
+
+# O Unity Catalog valida o acesso da credencial ao criar external locations (stack lakehouse).
+# Numa foundation recém-criada, as roles do Access Connector ainda não propagaram e a validação
+# falha com 403. Espera a propagação antes de expor o Access Connector aos stacks seguintes.
+resource "time_sleep" "access_connector_rbac" {
+  create_duration = "120s"
+
+  triggers = {
+    storage  = azurerm_role_assignment.access_connector_storage.id
+    queue    = azurerm_role_assignment.access_connector_queue.id
+    eventgrd = azurerm_role_assignment.access_connector_eventgrid.id
+  }
+}
