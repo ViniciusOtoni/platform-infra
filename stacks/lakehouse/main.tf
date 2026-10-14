@@ -70,6 +70,8 @@ resource "databricks_user" "admin" {
   for_each = toset(var.workspace_admins)
 
   user_name = each.key
+  # O primeiro login pela UI (SSO) já provisiona o usuário: adota em vez de falhar.
+  force = true
 }
 
 resource "databricks_group_member" "admin" {
