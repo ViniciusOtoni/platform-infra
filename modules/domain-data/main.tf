@@ -31,7 +31,6 @@ resource "databricks_external_location" "capture" {
   url             = "abfss://${azurerm_storage_container.capture.name}@${var.storage_account_name}.dfs.core.windows.net/"
   credential_name = var.storage_credential_name
   read_only       = true
-  force_destroy   = true
   comment         = "Arquivos do Event Hubs Capture do domínio ${var.name} (fonte da Bronze)."
 }
 
